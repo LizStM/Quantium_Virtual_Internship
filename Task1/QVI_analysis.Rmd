@@ -1,0 +1,488 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Data analysis on customer segments
+
+We want to find:
+
+* Who spends the most on chips (total sales), describing customers by lifestage and how premium their general purchasing behaviour is
+* How many customers are in each segment
+* How many chips are bought per customer by segment
+* What's the average chip price by customer segment
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+Data <- read.csv('QVI_data.csv')
+```
+
+## TOTAL SALES by lifestage and premium_customer
+
+Table with summarized information
+```{r, message=FALSE}
+lifestage_customer <- Data %>%
+  group_by(LIFESTAGE, PREMIUM_CUSTOMER) %>%
+  summarise(sales = sum(TOT_SALES)) %>%
+  arrange(LIFESTAGE, PREMIUM_CUSTOMER)
+```
+Create a bar graph with the last table
+```{r}
+ggplot(data = lifestage_customer,
+       aes(x = PREMIUM_CUSTOMER, y = sales, fill = LIFESTAGE)) +
+  geom_col(position = 'dodge') + 
+  labs(x ='Type of customer', y ='Sales',
+       title ='Sales', subtitle ='by life stage and customer') +
+  theme(axis.text.x = element_text(vjust = 0.5),
+        plot.title.position = 'plot', plot.title = element_text(size = 15, fac = 'bold'),
+  plot.subtitle = element_text(size = 12,fac = 'bold',hjust = 0.15))
+```
+
+Sales are coming mainly from Budget - older families, Mainstream - young singles/couples, and Mainstream - retirees
+
+Let's see the quantity of transaction by life stage and type of customer
+
+## NUMBER OF TRANSACTIONS by lifestage and premium_customer
+
+```{r, message=FALSE}
+n_transactions <- Data %>%
+  group_by(LIFESTAGE, PREMIUM_CUSTOMER) %>%
+  summarise(nbr_transaction = n())
+
+ggplot(data = n_transactions,
+       aes(x= PREMIUM_CUSTOMER, y = nbr_transaction, fill = LIFESTAGE)) +
+  geom_col(positio = 'dodge') +
+  labs(x ='Type of customer', y ='Number of transactions',
+       title ='Number of transactions', subtitle ='by life stage and  type of customer') +
+  theme(axis.text.x = element_text(vjust = 0.5),
+        plot.title.position = 'plot', plot.title = element_text(size = 15, fac = 'bold'),
+        plot.subtitle = element_text(size = 12,fac = 'bold',hjust = 0.15))
+```
+
+Most of the transactions come from Budget Older families and Mainstream Young Single/Couple and Retirees. Similar to total sales.
+
+## NUMBER OF CUSTOMERS by lifestage and premium_customer
+
+```{r, message=FALSE}
+data_customer <- read.csv('QVI_purchase_behaviour.csv')
+
+n_customer <- data_customer %>%
+  group_by(LIFESTAGE, PREMIUM_CUSTOMER) %>%
+  summarise(nbr_customers = n()) %>%
+  arrange(LIFESTAGE, PREMIUM_CUSTOMER)
+
+ggplot(data = n_customer,
+       aes(x= PREMIUM_CUSTOMER, y = nbr_customers, fill = LIFESTAGE)) +
+  geom_col(positio = 'dodge') +
+  labs(x ='Type of customer', y ='Number of customers',
+       title ='Number of customers', subtitle ='by life stage and  type of customer') +
+  theme(axis.text.x = element_text(vjust = 0.5),
+        plot.title.position = 'plot', plot.title = element_text(size = 15, fac = 'bold'),
+        plot.subtitle = element_text(size = 12,fac = 'bold',hjust = 0.15))
+```
+
+There are more Mainstream - young singles/couples and Mainstream - retirees who buy
+chips. This contributes to there being more sales to these customer segments but
+this is not a major driver for the Budget - Older families segment.
+
+## AVERAGE NUMBER OF UNITS PER CUSTOMER by lifestage and premium_customer
+
+To obtain the average by customer, and not by transaction, we group by card number 
+```{r, message=FALSE}
+n_units <- Data %>% 
+  group_by(LYLTY_CARD_NBR, LIFESTAGE, PREMIUM_CUSTOMER) %>%
+  summarise(avg = mean(PROD_QTY)) %>%
+  arrange(LIFESTAGE, PREMIUM_CUSTOMER)
+```
+Then we calculate the average again, to obtain the average number of units per customer
+```{r, message=FALSE}
+n_unitsT <- n_units %>% 
+  group_by(LIFESTAGE, PREMIUM_CUSTOMER) %>%
+  summarise(avg2 = mean(avg))
+```
+
+```{r}
+ggplot(data = n_unitsT,
+       aes(x= PREMIUM_CUSTOMER, y = avg2, fill = LIFESTAGE)) +
+  geom_col(positio = 'dodge') +
+  labs(x ='Type of customer', y ='quantity',
+       title ='Average number of units per customer', subtitle ='by LIFESTAGE and PREMIUM_CUSTOMER') +
+  theme(axis.text.x = element_text(vjust = 0.5),
+        plot.title.position = 'plot', plot.title = element_text(size = 15, fac = 'bold'),
+        plot.subtitle = element_text(size = 12,fac = 'bold',hjust = 0.15))
+```
+
+Older families and young families in general buy more chips per customer
+
+Let's also investigate the average price per unit chips bought for each customer segment as this is also a driver of total sales.
+
+## AVERAGE PRICE PER UNIT by lifestage and premium_customer
+
+
+```{r, message=FALSE}
+Data$UNIT_PRICE <- Data$TOT_SALES/Data$PROD_QTY
+
+price_unit <- Data %>%
+  group_by(LIFESTAGE,PREMIUM_CUSTOMER) %>%
+  summarise(avg_price = mean(UNIT_PRICE))
+
+ggplot(data = price_unit,
+       aes(x= PREMIUM_CUSTOMER, y = avg_price, fill = LIFESTAGE)) +
+  geom_col(positio = 'dodge') +
+  labs(x ='Type of customer', y ='price',
+       title ='Average price per unit', subtitle ='by LIFESTAGE and PREMIUM_CUSTOMER') +
+  theme(axis.text.x = element_text(vjust = 0.5),
+        plot.title.position = 'plot', plot.title = element_text(size = 15, fac = 'bold'),
+        plot.subtitle = element_text(size = 12,fac = 'bold',hjust = 0.15))
+```
+
+Mainstream midage and young singles and couples are more willing to pay more per packet of chips compared to their budget and premium counterparts.
+To check if the difference is statistically different we use a t-test.
+
+# Perform an independent t-test between mainstream vs premium and budget, midage and young singles and couples
+
+## Young Singles and Couples
+
+### Mainstream vs Premium  
+
+Select the data from young singles and couples from maintream and premium customers.
+```{r}
+young_mainstream_premium <- Data[Data$LIFESTAGE == 'YOUNG SINGLES/COUPLES' &
+                                    (Data$PREMIUM_CUSTOMER == 'Mainstream' |
+                                       Data$PREMIUM_CUSTOMER == 'Premium'),11:13]
+```
+t-test
+```{r}
+t.test(UNIT_PRICE ~ PREMIUM_CUSTOMER, data = young_mainstream_premium)
+
+```
+t = 24.777, df = 8897.4, p-value < 2.2e-16  
+
+### Maistream vs Budget
+
+```{r}
+young_mainstream_budget <- Data[Data$LIFESTAGE == 'YOUNG SINGLES/COUPLES' &
+                                   (Data$PREMIUM_CUSTOMER == 'Mainstream' |
+                                      Data$PREMIUM_CUSTOMER == 'Budget'),11:13]
+t.test(UNIT_PRICE ~ PREMIUM_CUSTOMER, data = young_mainstream_budget)
+
+```
+t = -29.522, df = 15099, p-value < 2.2e-16  
+
+### Premium vs Budget
+
+```{r}
+young_premium_budget <- Data[Data$LIFESTAGE == 'YOUNG SINGLES/COUPLES' &
+                                (Data$PREMIUM_CUSTOMER == 'Premium' |
+                                   Data$PREMIUM_CUSTOMER == 'Budget'),11:13]
+t.test(UNIT_PRICE ~ PREMIUM_CUSTOMER, data = young_premium_budget)
+
+```
+t = -0.43028, df = 12477, p-value = 0.667  
+
+## Midage Singles and Couples
+
+### Mainstream vs Premium
+
+```{r}
+midage_mainstream_premium <- Data[Data$LIFESTAGE == 'MIDAGE SINGLES/COUPLES' &
+                                          (Data$PREMIUM_CUSTOMER == 'Mainstream' |
+                                           Data$PREMIUM_CUSTOMER == 'Premium'),11:13]
+
+t.test(UNIT_PRICE ~ PREMIUM_CUSTOMER, data = midage_mainstream_premium)
+```
+t = 14.059, df = 15715, p-value < 2.2e-16  
+
+### Mainstream vs Budget
+
+```{r}
+midage_mainstream_budget <- Data[Data$LIFESTAGE == 'MIDAGE SINGLES/COUPLES' &
+                                    (Data$PREMIUM_CUSTOMER == 'Mainstream' |
+                                       Data$PREMIUM_CUSTOMER == 'Budget'),11:13]
+t.test(UNIT_PRICE ~ PREMIUM_CUSTOMER, data = midage_mainstream_budget)
+```
+t = -13.46, df = 8422.7, p-value < 2.2e-16  
+
+### Premium vs Budget
+
+```{r}
+midage_premium_budget <- Data[Data$LIFESTAGE == 'MIDAGE SINGLES/COUPLES' &
+                                   (Data$PREMIUM_CUSTOMER == 'Premium' |
+                                      Data$PREMIUM_CUSTOMER == 'Budget'),11:13]
+t.test(UNIT_PRICE ~ PREMIUM_CUSTOMER, data = midage_premium_budget)
+```
+t = -1.3537, df = 9975.6, p-value = 0.1758  
+
+When we compare Mainstream customers vs Budget or Premium the t-test results in a very small p-value (when we compare Budget vs Premium, this doesn´t happen), so we can say that the unit price for mainstream, young and mid-age singles and couples are significantly higher compared to their budget and premium counterparts.
+
+
+We might want to target customer segments that contribute the most to sales to retain them or further increase sales. Let's look at Mainstream - young singles/couples.
+
+# A-priori analysis to deep dive into Mainstream, young singles/couples
+
+## Brands that Mainstream, young singles/couples prefer 
+
+### List of young customers, Brands and pack size they bought
+
+```{r}
+transaction_Customer_Young <- Data[Data$LIFESTAGE == 'YOUNG SINGLES/COUPLES' &
+                               Data$PREMIUM_CUSTOMER == 'Mainstream',c(1,9,10)]
+str(transaction_Customer_Young)
+```
+### Change single to basket format and save it
+
+```{r, warning=FALSE, message=FALSE}
+library(plyr)
+brands_customer <- ddply(transaction_Customer_Young, c("LYLTY_CARD_NBR"), 
+                           function(df1)paste(df1$BRAND, collapse = ","))
+brands_customer$LYLTY_CARD_NBR <- NULL
+write.csv(brands_customer, "Brands_Young.csv" , quote = FALSE, row.names = FALSE)
+```
+### Reading the document with brands in the new format
+
+```{r, warning=FALSE, message=FALSE}
+library(arules)
+transactionYoung <- read.transactions(file = "Brands_Young.csv",
+                                   format = "basket",
+                                   sep = ",",
+                                   header = TRUE)
+```
+
+### Frequency of brands 
+
+all Brands in Data (20)
+```{r}
+itemFrequencyPlot(transactionYoung, topN= 20, type='absolute')
+```
+
+Top 10 of brands
+```{r}
+itemFrequencyPlot(transactionYoung, topN= 10, type='absolute')
+```
+
+### A-priori analysis to find frequent itemsets
+
+We tried the target = 'rules', but any rule was find. So we used 'frequent itemset' instead.
+```{r}
+soporte <- 100 / dim(transactionYoung)[1]
+rules <- apriori(transactionYoung, parameter = list(supp= soporte,
+                                                    conf= 0.7,
+                                                    minlen= 1,
+                                                    maxlen = 5,
+                                                    target = "frequent itemset"))
+```
+
+### Inspect the itemsets
+
+```{r}
+summary(rules)
+#inspect(rules)
+
+duplicated(rules)
+```
+
+### Show the first 20 itemsets and save them
+
+```{r}
+top_20_items <- sort(rules, by = "support", decreasing = TRUE)[1:20]
+inspect(top_20_items)
+
+df_top20 <- as(top_20_items, Class = "data.frame")
+write.csv(df_top20, "top20_young.csv")
+```
+
+### Plot top 20 itemsets
+
+```{r}
+ggplot(data = df_top20,
+       aes(x = reorder(items, support), y = support)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Frequent sets", x = "sets") +
+  theme_bw()
+```
+
+## Pack size that Mainstream, young singles/couples prefer 
+
+```{r}
+packsize_young <- ddply(transaction_Customer_Young, c("LYLTY_CARD_NBR"), 
+                         function(df1)paste(df1$PACK_SIZE, collapse = ","))
+packsize_young$LYLTY_CARD_NBR <- NULL
+write.csv(packsize_young, "PackSize_Young.csv" , quote = FALSE, row.names = FALSE)
+```
+
+```{r}
+packsizeYoung <- read.transactions(file = "PackSize_Young.csv",
+                                      format = "basket",
+                                      sep = ",",
+                                      header = TRUE)
+```
+
+```{r}
+itemFrequencyPlot(packsizeYoung, topN= 20, type='absolute')#all sizes in Data(20)
+itemFrequencyPlot(packsizeYoung, topN= 10, type='absolute')
+```
+
+```{r}
+soportePackYoung <- 100 / dim(packsizeYoung)[1]
+rulesSizeYoung <- apriori(packsizeYoung, parameter = list(supp= soportePackYoung,
+                                                    conf= 0.7,
+                                                    minlen= 1,
+                                                    maxlen = 5,
+                                                    target = "frequent itemset"))
+```
+
+```{r}
+summary(rulesSizeYoung)
+#inspect(rulesSizeYoung)
+
+duplicated(rulesSizeYoung)
+```
+
+```{r}
+top_20_sizes <- sort(rulesSizeYoung, by = "support", decreasing = TRUE)[1:20]
+inspect(top_20_sizes)
+
+df_top20sizes <- as(top_20_sizes, Class = "data.frame")
+write.csv(df_top20sizes, "top20Sizes_young.csv")
+```
+
+```{r}
+ggplot(data = df_top20sizes,
+       aes(x = reorder(items, support), y = support)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Frequent sets (size)", x = "sets") +
+  theme_bw()
+```
+
+# A-priori analysis to deep dive into Budget Older families
+
+Although there aren't too many customers in the Budget Older families segment, they make more transactions and contribute to the sales, so we can also check their preferences.
+
+## Brands that Budget Older families prefer 
+
+```{r}
+transaction_Budget_OldFam <- Data[Data$LIFESTAGE == 'OLDER FAMILIES' &
+                                     Data$PREMIUM_CUSTOMER == 'Budget',c(1,9,10)]
+str(transaction_Budget_OldFam)
+```
+
+```{r}
+brands_OldFam <- ddply(transaction_Budget_OldFam, c("LYLTY_CARD_NBR"), 
+                         function(df1)paste(df1$BRAND, collapse = ","))
+brands_OldFam$LYLTY_CARD_NBR <- NULL
+write.csv(brands_OldFam, "Brands_Butget_OldFam.csv" , quote = FALSE, row.names = FALSE)
+```
+
+```{r}
+transactionOldFam <- read.transactions(file = "Brands_Butget_OldFam.csv",
+                                      format = "basket",
+                                      sep = ",",
+                                      header = TRUE)
+```
+
+```{r}
+itemFrequencyPlot(transactionOldFam, topN= 20, type='absolute')#all Brands in Data(23)
+itemFrequencyPlot(transactionOldFam, topN= 10, type='absolute')#all Brands in Data(23)
+```
+
+```{r}
+soporteBrandOldFam <- 200 / dim(transactionOldFam)[1]
+rulesBrandOldFam <- apriori(transactionOldFam, parameter = list(supp= soporteBrandOldFam,
+                                                    conf= 0.7,
+                                                    minlen= 1,
+                                                    maxlen = 5,
+                                                  target = "frequent itemset"))
+```
+
+```{r}
+summary(rulesBrandOldFam)
+duplicated(rulesBrandOldFam)
+```
+
+```{r}
+top20_items_OldFam <- sort(rulesBrandOldFam, by = "support", decreasing = TRUE)[1:20]
+inspect(top20_items_OldFam)
+
+df_top20_OldFam <- as(top20_items_OldFam, Class = "data.frame")
+write.csv(df_top20_OldFam, "top20_Budget_OldFam.csv")
+```
+
+```{r}
+ggplot(data = df_top20_OldFam,
+       aes(x = reorder(items, support), y = support)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Frequent sets (brand)", x = "sets") +
+  theme_bw()
+```
+
+## Pack size taht Budget Older families prefer 
+
+```{r}
+packsize_OldFam <- ddply(transaction_Budget_OldFam, c("LYLTY_CARD_NBR"), 
+                        function(df1)paste(df1$PACK_SIZE, collapse = ","))
+packsize_OldFam$LYLTY_CARD_NBR <- NULL
+write.csv(packsize_OldFam, "PackSize_Buget_OldFam.csv" , quote = FALSE, row.names = FALSE)
+```
+
+```{r}
+packsizeOldFam <- read.transactions(file = "PackSize_Buget_OldFam.csv",
+                                   format = "basket",
+                                   sep = ",",
+                                   header = TRUE)
+```
+
+```{r}
+itemFrequencyPlot(packsizeOldFam, topN= 20, type='absolute')#all sizes in Data(20)
+itemFrequencyPlot(packsizeOldFam, topN= 10, type='absolute')
+```
+
+```{r}
+soportePackOldFam <- 200 / dim(packsizeOldFam)[1]
+rulesSizeOldFam <- apriori(packsizeOldFam, parameter = list(supp= soportePackOldFam,
+                                                          conf= 0.7,
+                                                          minlen= 1,
+                                                          maxlen = 5,
+                                                          target = "frequent itemset"))
+```
+
+```{r}
+summary(rulesSizeOldFam)
+duplicated(rulesSizeOldFam)
+```
+
+```{r}
+top_20_sizes_OF <- sort(rulesSizeOldFam, by = "support", decreasing = TRUE)[1:20]
+inspect(top_20_sizes_OF)
+
+df_top20sizesOldFam <- as(top_20_sizes_OF, Class = "data.frame")
+write.csv(df_top20sizesOldFam, "top20Sizes_OldFam.csv")
+```
+
+```{r}
+ggplot(data = df_top20sizesOldFam,
+       aes(x = reorder(items, support), y = support)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Frequent sets (size)", x = "sets") +
+  theme_bw()
+```
+
+# Conclusion
+
+Recapitulation of what we have found.
+
+Sales are coming mainly from Budget - older families, Mainstream - young singles/couples, and Mainstream - retirees shoppers, the same for the number of transactions.
+There are more Mainstream - young singles/couples and retirees who buy chips. This contributes to there being more sales from these customer segments but in the case of the Budget - Older families segment, they contribute making more transactions of chips.
+
+Older families and young families in general buy more chips per customer, maybe one member of the family buys for all the other members.
+
+Mainstream midage and young singles/couples are more willing to pay more per packet of chips compared to their budget and premium counterparts.
+
+Three of the first brands that Mainstream young singles and couples prefer are Kettle, Doritos, and Pringles in packet sizes of 175g or 150g.
+
+Although there aren’t too many customers in the Budget Older families segment, they make more transactions and contribute to the sales, three of the first brands that they prefer are Kettle, Smiths, and Doritos in packet sizes of 175g or 150g.
+
+Both segments coincide in the brand Kettle and Doritos and the packet sizes.

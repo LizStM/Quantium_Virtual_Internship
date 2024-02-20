@@ -1,0 +1,234 @@
+---
+title: "Quantium Virtual Intership Task 1"
+author: "Lizbeth Santiago"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+## Background information
+
+The Category Manager for Chips wants understand the types of customers who purchase Chips and their purchasing behaviour within the region.
+The insights from the analysis will feed into the supermarket’s strategic plan for the chip category in the next half year.
+
+## Exploratory data analysis
+
+### Load required libraries
+
+```{r, warning=FALSE}
+library(data.table)
+library(ggplot2)
+library(readr)
+library(ggmosaic)
+```
+
+### Reading data
+
+```{r}
+filePath <- "C:/Users/Liz/Documents/Virtual_Intership/"
+transactionData <- fread(paste0(filePath,"QVI_transaction_data.csv"))
+customerData <- fread(paste0(filePath,"QVI_purchase_behaviour.csv"))
+```
+
+
+### Examining transaction data
+
+
+```{r}
+head(transactionData)
+str(transactionData)
+```
+
+The column DATE is in an integer format, so it is necessary to change this to a date format
+
+### Convert column DATE to date format
+
+```{r}
+transactionData$DATE <- as.Date(transactionData$DATE, origin = "1899-12-30")
+```
+
+### Verify information - examine PROD_NAME
+
+
+To check if the products are those that the analysis need.
+Choose the unique product names, and examine the words in PROD_NAME to see if there are any incorrect entries such as products that are not chips
+
+```{r}
+#unique(transactionData[, PROD_NAME])
+
+productWords <- data.table(unlist(strsplit(unique(transactionData[, PROD_NAME]), " ")))
+setnames(productWords, 'words') #name the column
+```
+
+### Removing digits and special character
+
+
+To focus just in words that will tell us if the product is chips or not, remove all words with digits and special characters.
+
+```{r}
+patterns <- c('^[123456789]','&')
+words2 <- productWords [! grepl (paste(patterns, collapse='|'), productWords$words),]
+```
+
+### Most common words and sorting them
+
+```{r}
+commonWords <- words2[, .(.N), .(words)][order(-N)]
+```
+
+There are some salsa products in the dataset that we don't need.
+
+### Remove Salsa products
+
+```{r}
+transactionData[, SALSA := grepl("salsa", tolower(PROD_NAME))]# new column that marks a salsa product
+transactionData <- transactionData[SALSA == FALSE, ][, SALSA := NULL]
+```
+
+### Summarise the data to check for nulls and possible outliers
+
+```{r}
+summary(transactionData) #there is a case where 200 packets of chips are bought in one transaction.
+```
+
+There is a case where 200 packets of chips are bought in one transaction.
+
+```{r}
+transactionData[PROD_QTY>10]
+transactionData[LYLTY_CARD_NBR==226000]
+```
+
+Actually we found that there are two transactions by the same customer, with card number 226000, who just made these two transactions of 200 packets.
+
+### Removing these two transactions
+
+```{r}
+transactionData <- transactionData[LYLTY_CARD_NBR!=226000]
+```
+
+### Re-examine transaction data
+
+```{r}
+summary(transactionData)
+```
+
+### Count the number of transactions by date
+
+```{r}
+countByDate<- transactionData[, .(.N), .(DATE)]#a missing date
+```
+
+There is a missing date, so create a sequence of dates and use this to create a chart of number of transactions over time to find the missing date.
+
+```{r}
+s <- as.Date('2018-07-01')
+e <- as.Date('2019-06-30')
+completeDates <- data.table(seq(from=s, to=e, by=1))
+
+countByDate2 <- merge(countByDate, completeDates,by.x="DATE", by.y="V1", all=T)
+```
+
+### Plot transactions over time
+
+
+```{r}
+theme_set(theme_bw())
+theme_update(plot.title = element_text(hjust = 0.5))
+
+ggplot(countByDate2, aes(x = DATE, y = N)) +
+  geom_line() +
+  labs(x = "Day", y = "Number of transactions", title = "Transactions over time") +
+  scale_x_date(breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+```
+
+
+We can see that there is an increase in purchases in December and a break in late December. Let's zoom in on this.
+
+### Ploting transaction of December and January
+
+```{r}
+dec_jan = countByDate2[DATE>as.Date('2018-12-07') & DATE<as.Date('2019-01-07')]
+
+ggplot(dec_jan, aes(x = DATE, y = N)) +
+  geom_line() +
+  labs(x = "Day", y = "Number of transactions", title = "Transactions over time") +
+  scale_x_date(breaks = "1 day") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+
+```
+
+The missing date is on December 25th, that day shops are closed.
+We can see that the increase in sales occurs in the lead-up to Christmas and that
+there are zero sales on Christmas day itself, then decrease to the usual sales.
+
+## Checking information about Pack size
+
+```{r}
+transactionData[, PACK_SIZE := parse_number(PROD_NAME)]
+pack_sizes <- transactionData[, .N, PACK_SIZE][order(PACK_SIZE)]
+
+ggplot(transactionData, aes(x = PACK_SIZE)) +
+  geom_histogram(binwidth = 10, col='black', fill='green', alpha=0.4) +
+  labs(x = "Pack Size", y = "Number of transactions", title = "Transactions by pack size")
+```
+
+Most of the sales are from 175g pack size
+
+## Checking Brands
+
+To obtain the brands we extract just the first word of product names
+
+```{r, warning=FALSE}
+library(stringr)
+transactionData[, BRAND := str_split(transactionData$PROD_NAME, " ", simplify = TRUE)[,1] ] #First word
+unique(transactionData[, BRAND])
+```
+
+Some of the brands have wrong spelling
+
+### Brand adjustments
+
+```{r}
+transactionData[BRAND == "Red", BRAND := "RRD"]
+transactionData[BRAND == "Smith", BRAND := "Smiths"]
+transactionData[BRAND == "Dorito", BRAND := "Doritos"]
+transactionData[BRAND == "Infzns", BRAND := "Infuzions"]
+transactionData[BRAND == "Snbts", BRAND := "Sunbites"]
+transactionData[BRAND == "WW", BRAND := "Woolworths"]
+transactionData[BRAND == "NCC", BRAND := "Natural"]
+transactionData[BRAND == "Grain", BRAND := "GrnWves"]
+```
+
+### Re-examine of brands
+
+```{r}
+unique(transactionData[, BRAND])
+```
+
+## Examining customer data
+
+```{r}
+head(customerData)
+summary(customerData)
+```
+
+## Merge both datasets
+
+```{r}
+data <- merge(transactionData, customerData, all.x = TRUE)
+```
+
+### Checking for nulls.
+
+```{r}
+sum(is.na(data))
+```
+
+### Save 'data'
+
+```{r}
+#filePath <- "C:/Users/Liz/Documents/Virtual_Intership/"
+#fwrite(data, paste0(filePath,"QVI_data.csv"))
+```
